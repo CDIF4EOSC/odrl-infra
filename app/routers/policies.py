@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Body
 from typing import Dict, Any, List, Optional
 import os
 import json
+import uuid
 from pydantic import BaseModel, Field
 
 from cli.create_policy import (
@@ -22,6 +23,7 @@ from cli.create_policy import (
 from ..services.oydid import run_oydid_command
 from ..services.qdrant_service import qdrant_service
 from ..services import cdif_vocab
+from ..services.policy_metadata import stamp_policy_metadata
 
 router = APIRouter(prefix="/policy", tags=["ODRL & OAC Policy Service"])
 
@@ -137,7 +139,7 @@ async def create_policy(request: CreatePolicyApiRequest):
     """
     Validates and stores an ODRL/OAC Policy, optionally anchoring it as a DID and indexing in Qdrant.
     """
-    policy = request.policy
+    policy = stamp_policy_metadata(request.policy)
     is_valid, errors = Validator.validate_policy(policy)
     if not is_valid:
         raise HTTPException(status_code=422, detail={"message": "Policy validation failed", "errors": errors})

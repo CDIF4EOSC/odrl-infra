@@ -239,6 +239,17 @@ export default function PolicyBuilder() {
     const [policyTarget, setPolicyTarget] = useState('duodrl:TemplateDataset');
     const [policyAssigner, setPolicyAssigner] = useState('https://solidweb.me/besteves4/profile/card#me');
 
+    // Descriptive metadata (dcterms + owl:versionInfo)
+    const [creator, setCreator] = useState('');
+    const [publisher, setPublisher] = useState('');
+    const [source, setSource] = useState('');
+    const [versionInfo, setVersionInfo] = useState('1.0');
+    // System-generated dates (YYYY-MM-DD). created/issued are kept from a loaded policy;
+    // modified is always today. The backend stamps the final values on save.
+    const [createdDate, setCreatedDate] = useState(null);
+    const [issuedDate, setIssuedDate] = useState(null);
+    const today = new Date().toISOString().slice(0, 10);
+
     // Rules
     const [permissions, setPermissions] = useState([
         {
@@ -387,8 +398,12 @@ export default function PolicyBuilder() {
             if (data['odrl:uid'] || data['uid']) setUid(data['odrl:uid'] || data['uid']);
             if (data['odrl:profile']) setProfile(data['odrl:profile']);
             if (data['dcterms:description']) setDescription(data['dcterms:description']);
-            if (data['dcterms:creator']) setCreator(data['dcterms:creator']);
-            if (data['dcterms:source']) setSource(Array.isArray(data['dcterms:source']) ? data['dcterms:source'].join(', ') : data['dcterms:source']);
+            setCreator(data['dcterms:creator'] || '');
+            setPublisher(data['dcterms:publisher'] || '');
+            setSource(Array.isArray(data['dcterms:source']) ? data['dcterms:source'].join(', ') : (data['dcterms:source'] || ''));
+            setVersionInfo(data['owl:versionInfo'] || '1.0');
+            setCreatedDate(data['dcterms:created']?.slice(0, 10) || null);
+            setIssuedDate(data['dcterms:issued']?.slice(0, 10) || null);
             if (data['odrl:target'] || data['target']) setPolicyTarget(data['odrl:target'] || data['target'] || '');
             if (data['odrl:assigner'] || data['assigner']) setPolicyAssigner(data['odrl:assigner'] || data['assigner'] || '');
 
@@ -501,16 +516,26 @@ export default function PolicyBuilder() {
                     "cc": "http://creativecommons.org/ns#",
                     "cv1": "https://odrl.codata.org/cv1/",
                     "cv2": "https://odrl.codata.org/cv2/",
-                    "cv3": "https://odrl.codata.org/cv3/"
+                    "cv3": "https://odrl.codata.org/cv3/",
+                    "dcterms": "http://purl.org/dc/terms/",
+                    "owl": "http://www.w3.org/2002/07/owl#"
                 }
             ],
             "@type": policyType,
             "type": policyType,
             "odrl:uid": uid,
-            "odrl:profile": profile,
-            "dcterms:description": description,
-            "dcterms:issued": new Date().toISOString()
+            "odrl:profile": profile
         };
+
+        if (creator.trim()) policy["dcterms:creator"] = creator.trim();
+        if (publisher.trim()) policy["dcterms:publisher"] = publisher.trim();
+        if (description.trim()) policy["dcterms:description"] = description.trim();
+        const sources = source.split(',').map(s => s.trim()).filter(Boolean);
+        if (sources.length) policy["dcterms:source"] = sources.length === 1 ? sources[0] : sources;
+        policy["dcterms:created"] = createdDate || today;
+        policy["dcterms:modified"] = today;
+        policy["dcterms:issued"] = issuedDate || today;
+        policy["owl:versionInfo"] = versionInfo.trim() || '1.0';
 
         if (policyTarget.trim()) {
             policy["odrl:target"] = policyTarget.trim();
@@ -655,6 +680,8 @@ export default function PolicyBuilder() {
             return res.data;
         },
         onSuccess: (data) => {
+            if (data.policy?.['dcterms:created']) setCreatedDate(data.policy['dcterms:created']);
+            if (data.policy?.['dcterms:issued']) setIssuedDate(data.policy['dcterms:issued']);
             setShaclFeedback({
                 status: 'success',
                 message: `Policy anchored successfully! UID / DID: ${data.uid}`
@@ -1159,6 +1186,71 @@ export default function PolicyBuilder() {
                                         className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/30 border border-gray-300 dark:border-white/10 text-sm font-mono focus:ring-2 focus:ring-indigo-500"
                                     />
                                 </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1">
+                                        Author / Contributor (dcterms:creator)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. https://orcid.org/0000-0002-1825-0097"
+                                        value={creator}
+                                        onChange={(e) => setCreator(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/30 border border-gray-300 dark:border-white/10 text-sm font-mono focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1">
+                                        Publisher (dcterms:publisher)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. https://ror.org/02nkf1q06"
+                                        value={publisher}
+                                        onChange={(e) => setPublisher(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/30 border border-gray-300 dark:border-white/10 text-sm font-mono focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-[1fr_10rem] gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1">
+                                        Source (dcterms:source, comma-separated)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="optional"
+                                        value={source}
+                                        onChange={(e) => setSource(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/30 border border-gray-300 dark:border-white/10 text-sm font-mono focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1">
+                                        Version (owl:versionInfo)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="1.0"
+                                        value={versionInfo}
+                                        onChange={(e) => setVersionInfo(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/30 border border-gray-300 dark:border-white/10 text-sm font-mono focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl bg-gray-50 dark:bg-black/20 border border-dashed border-gray-300 dark:border-white/10 px-3 py-2">
+                                <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                                    System-generated dates
+                                </div>
+                                <dl className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs font-mono text-gray-700 dark:text-gray-300">
+                                    <div><dt className="text-gray-500">dcterms:created</dt><dd>{createdDate || today}</dd></div>
+                                    <div><dt className="text-gray-500">dcterms:modified</dt><dd>{today}</dd></div>
+                                    <div><dt className="text-gray-500">dcterms:issued</dt><dd>{issuedDate || today}</dd></div>
+                                </dl>
                             </div>
 
                             {/* Wizard Navigation */}
